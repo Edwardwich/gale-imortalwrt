@@ -1,50 +1,74 @@
-#!/bin/bash
-
-# Exit immediately if a command exits with a non-zero status
-set -e
+#!/bin/sh
 
 echo "=========================================="
-echo "Starting OpenWrt Package & Theme Installer"
+echo " Interactive OpenWrt Package Installer"
 echo "=========================================="
 
-# 1. Update package lists
-echo -r "Updating package lists..."
+# Update package lists first
 apk update
 
-# 2. Install repository packages
-echo -e "\n[+] Installing repository packages..."
-apk add btop
-apk add dnsmasq-full
-apk add sing-box
-apk add xray-core
-apk add homeproxy
+# Define repository packages (Name)
+REPO_PACKAGES="btop dnsmasq-full sing-box xray-core homeproxy"
 
-# 3. Create a temporary directory for downloaded APKs
+echo "--- Repository Packages ---"
+for pkg in $REPO_PACKAGES; do
+    printf "Do you want to install [ %s ]? (y/n): " "$pkg"
+    read -r choice
+    case "$choice" in
+        y|Y ) 
+            echo "Installing $pkg..."
+            apk add "$pkg"
+            ;;
+        * ) 
+            echo "Skipping $pkg."
+            ;;
+    esac
+    echo ""
+done
+
+
+# Define external APKs (Name | URL)
+EXTERNAL_APKS="
+luci-theme-material3|https://github.com/KawaiiHachimi/luci-theme-material3/releases/download/v1.0.6/luci-theme-material3-26.156.15499.38397ed.apk
+luci-theme-argon|https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.7/luci-theme-argon-2.4.7-r1.apk
+luci-app-passwall2|https://github.com/Openwrt-Passwall/openwrt-passwall2/releases/download/26.8.20-1/luci-app-passwall2-26.8.20-r1.apk
+"
+
 DOWNLOAD_DIR="/tmp/openwrt_custom_installs"
 mkdir -p "$DOWNLOAD_DIR"
-cd "$DOWNLOAD_DIR"
 
-echo -e "\n[+] Downloading custom APK packages..."
+echo "--- Themes & External Applications ---"
+# Loop through each item in the external list
+echo "$EXTERNAL_APKS" | while IFS='|' read -r name url; do
+    # Skip empty lines
+    [ -z "$name" ] && continue
 
-# 4. Download themes and applications
-echo "Downloading luci-theme-material3..."
-wget https://github.com/KawaiiHachimi/luci-theme-material3/releases/download/v1.0.6/luci-theme-material3-26.156.15499.38397ed.apk
+    printf "Do you want to download and install [ %s ]? (y/n): " "$name"
+    read -r choice
+    case "$choice" in
+        y|Y ) 
+            echo "Downloading $name..."
+            wget "$url" -P "$DOWNLOAD_DIR"
+            ;;
+        * ) 
+            echo "Skipping $name."
+            ;;
+    esac
+    echo ""
+done
 
-echo "Downloading luci-theme-argon..."
-wget https://github.com/jerrykuku/luci-theme-argon/releases/download/v2.4.7/luci-theme-argon-2.4.7-r1.apk
 
-echo "Downloading luci-app-passwall2..."
-wget https://github.com/Openwrt-Passwall/openwrt-passwall2/releases/download/26.8.20-1/luci-app-passwall2-26.8.20-r1.apk
+# Install any downloaded local APK packages
+if [ "$(ls -A "$DOWNLOAD_DIR" 2>/dev/null)" ]; then
+    echo "[+] Installing selected local APKs..."
+    apk add --allow-untrusted "$DOWNLOAD_DIR"/*.apk
+else
+    echo "No external APKs were selected."
+fi
 
-# 5. Install downloaded local APK packages
-echo -e "\n[+] Installing downloaded APKs..."
-apk add --allow-untrusted *.apk
-
-# 6. Cleanup
-echo -e "\n[+] Cleaning up downloaded files..."
-cd /
+# Cleanup
 rm -rf "$DOWNLOAD_DIR"
 
 echo "=========================================="
-echo "Installation completed successfully!"
+echo "Installation process finished!"
 echo "=========================================="
