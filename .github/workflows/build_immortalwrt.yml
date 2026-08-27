@@ -1,0 +1,112 @@
+name: Build ImmortalWrt Google Wifi (Gale)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'ImmortalWrt Version (snapshot or release like 23.05.5)'
+        required: true
+        default: 'snapshot'
+      extra_packages:
+        description: 'Additional packages to append (optional)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Request and Build Firmware via ASU API
+        run: |
+          python3 - <<EOF
+          import json, urllib.request, time, os
+
+          version = "${{ github.event.inputs.version }}"
+          profile = "google,gale"
+          target = "ipq40xx"
+          
+          # Your requested custom package list
+          base_packages = [
+              "iperf3",
+              "sing-box",
+              "ip-full",
+              "kmod-tun",
+              "luci-app-homeproxy"
+          ]
+          
+          # Handle optional extra inputs from workflow dispatch trigger
+          user_extra = "${{ github.event.inputs.extra_packages }}"
+          if user_extra.strip():
+              base_packages.extend(user_extra.replace(",", " ").split())
+
+          print(f"[*] Target Profile: {profile} ({target})")
+          print(f"[*] Version: {version}")
+          print(f"[*] Packages to include: {base_packages}")
+
+          payload = json.dumps({
+              "version": version,
+              "target": target,
+              "profile": profile,
+              "packages": base_packages
+          }).encode("utf-8")
+
+          asu_url = "https://firmware-selector.immortalwrt.org"
+          req = urllib.request.Request(
+              f"{asu_url}/api/build",
+              data=payload,
+              headers={"Content-Type": "application/json"}
+          )
+
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  res = json.loads(resp.read().decode())
+          except Exception as e:
+              print(f"[-] Failed to submit build request: {e}")
+              exit(1)
+
+          req_hash = res.get("request_hash")
+          if not req_hash:
+              print(f"[-] Error in API response: {res}")
+              exit(1)
+
+          print(f"[+] Build request accepted. Request Hash: {req_hash}")
+          print("[*] Polling build status (this may take a few minutes)...")
+
+          while True:
+              time.sleep(15)
+              try:
+                  status_req = urllib.request.Request(f"{asu_url}/api/build/{req_hash}")
+                  with urllib.request.urlopen(status_req) as resp:
+                      status_res = json.loads(resp.read().decode())
+                      status = status_res.get("status")
+                      print(f"[*] Status: {status}")
+
+                      if status == "complete":
+                          print("[+] Build completed successfully!")
+                          os.makedirs("firmware_output", exist_ok=True)
+                          for img in status_res.get("images", []):
+                              img_url = asu_url + img["url"] if img["url"].startswith("/") else img["url"]
+                              dest = os.path.join("firmware_output", img["name"])
+                              print(f"[*] Downloading {img['name']}...")
+                              urllib.request.urlretrieve(img_url, dest)
+                          break
+                      elif status == "failed":
+                        print(f"[-] Build failed on remote server: {status_res}")
+                        exit(1)
+              except Exception as e:
+                  print(f"[!] Warning: Error checking status loop: {e}")
+          EOF
+
+      - name: Upload Firmware Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: immortalwrt-google-wifi-gale
+          path: firmware_output/
