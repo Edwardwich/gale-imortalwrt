@@ -1,10 +1,10 @@
-name: Build ImmortalWrt Google Wifi (Gale) - Custom Packages
+name: Build ImmortalWrt Google Wifi (Gale) - 25.12.1
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'ImmortalWrt Version (e.g., 25.12.1 or snapshot)'
+        description: 'ImmortalWrt Version'
         required: true
         default: '25.12.1'
 
@@ -32,8 +32,9 @@ jobs:
             URL="https://downloads.immortalwrt.org/releases/$VERSION/targets/$TARGET/$SUBTARGET/immortalwrt-image-builder-$VERSION-$TARGET-$SUBTARGET.Linux-x86_64.tar.xz"
           fi
 
-          echo "[*] Downloading from: $URL"
-          wget -q "$URL" -O builder.tar.xz
+          echo "[*] Downloading Builder from: $URL"
+          wget -q "$URL" -O builder.tar.xz || { echo "[-] Download failed! Check version string."; exit 1; }
+
           mkdir builder
           tar -xf builder.tar.xz -C builder --strip-components=1
 
@@ -41,10 +42,9 @@ jobs:
         run: |
           cd builder
           
-          # All your packages combined into a single string
           ALL_PACKAGES="apk-openssl ath10k-board-qca4019 ath10k-firmware-qca4019-ct autocore automount base-files block-mount ca-bundle default-settings-chn dnsmasq-full dropbear firewall4 fstools kmod-ath10k-ct kmod-gpio-button-hotplug kmod-leds-gpio kmod-nf-nathelper kmod-nft-offload kmod-usb-dwc3 kmod-usb-dwc3-qcom kmod-usb3 libc libgcc libustream-openssl logd luci luci-app-cpufreq mtd netifd nftables odhcp6c odhcpd-ipv6only ppp ppp-mod-pppoe procd-ujail uboot-envtools uci uclient-fetch urandom-seed urngd wpad-openssl partx-utils mkf2fs e2fsprogs kmod-fs-ext4 kmod-fs-f2fs kmod-google-firmware kmod-ramoops sing-box ip-full kmod-tun luci-app-homeproxy nano btop iperf3"
 
-          echo "[*] Compiling image for google_gale with custom package set..."
+          echo "[*] Compiling router firmware for google_gale..."
           make image PROFILE="google_gale" PACKAGES="$ALL_PACKAGES"
           
           mkdir -p ../firmware_output
@@ -53,5 +53,5 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-google-wifi-gale-custom
+          name: immortalwrt-25.12.1-google-wifi-gale
           path: firmware_output/
