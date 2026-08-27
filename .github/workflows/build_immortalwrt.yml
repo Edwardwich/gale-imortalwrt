@@ -27,9 +27,9 @@ jobs:
           SUBTARGET="chromium"
           
           if [ "$VERSION" = "snapshot" ]; then
-            URL="https://downloads.immortalwrt.org/snapshots/targets/$TARGET/$SUBTARGET/immortalwrt-image-builder-$TARGET-$SUBTARGET.Linux-x86_64.tar.xz"
+            URL="https://downloads.immortalwrt.org/releases/25.12.1/targets/ipq40xx/chromium/immortalwrt-25.12.1-ipq40xx-chromium-google_wifi-squashfs-sysupgrade.bin"
           else
-            URL="https://downloads.immortalwrt.org/releases/$VERSION/targets/$TARGET/$SUBTARGET/immortalwrt-image-builder-$VERSION-$TARGET-$SUBTARGET.Linux-x86_64.tar.xz"
+            URL="httpps://https://downloads.immortalwrt.org/releases/25.12.1/targets/ipq40xx/chromium/immortalwrt-25.12.1-ipq40xx-chromium-google_wifi-squashfs-sysupgrade.bin"
           fi
 
           echo "[*] Downloading Builder from: $URL"
