@@ -20,11 +20,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk g++ git gettext libssl-dev python3-setuptools rsync swig unzip file wget
 
-      - name: Download Image Builder
+      - name: Download Image Builder for Google Wifi (Chromium Subtarget)
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TARGET="ipq40xx"
-          SUBTARGET="generic"
+          SUBTARGET="chromium"   # Google Wifi gale requires the chromium subtarget
           
           if [ "$VERSION" = "snapshot" ]; then
             URL="https://downloads.immortalwrt.org/snapshots/targets/$TARGET/$SUBTARGET/immortalwrt-image-builder-$TARGET-$SUBTARGET.Linux-x86_64.tar.xz"
@@ -48,7 +48,7 @@ jobs:
           make image PROFILE="google_gale" PACKAGES="$ALL_PACKAGES"
           
           mkdir -p ../firmware_output
-          cp bin/targets/ipq40xx/generic/* ../firmware_output/ || cp -r bin/targets/*/*/* ../firmware_output/ || true
+          cp bin/targets/ipq40xx/chromium/* ../firmware_output/ || cp -r bin/targets/*/*/* ../firmware_output/ || true
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
