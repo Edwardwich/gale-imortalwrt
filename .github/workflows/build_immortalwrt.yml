@@ -1,12 +1,12 @@
-name: Build ImmortalWrt Google Wifi (Gale) - 25.12.1
+name: Build ImmortalWrt Google Wifi (Gale)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'ImmortalWrt Version'
+        description: 'ImmortalWrt Version (snapshot or 24.10.5)'
         required: true
-        default: '25.12.1'
+        default: 'snapshot'
 
 jobs:
   build:
@@ -20,11 +20,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk g++ git gettext libssl-dev python3-setuptools rsync swig unzip file wget
 
-      - name: Download Image Builder for Google Wifi (Chromium Subtarget)
+      - name: Download Image Builder
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TARGET="ipq40xx"
-          SUBTARGET="chromium"   # Google Wifi gale requires the chromium subtarget
+          SUBTARGET="chromium"
           
           if [ "$VERSION" = "snapshot" ]; then
             URL="https://downloads.immortalwrt.org/snapshots/targets/$TARGET/$SUBTARGET/immortalwrt-image-builder-$TARGET-$SUBTARGET.Linux-x86_64.tar.xz"
@@ -53,5 +53,5 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-25.12.1-google-wifi-gale
+          name: immortalwrt-google-wifi-gale
           path: firmware_output/
