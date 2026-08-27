@@ -1,12 +1,12 @@
-name: Build ImmortalWrt Google Wifi (Gale)
+name: Build ImmortalWrt Google Wifi
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'ImmortalWrt Version (snapshot or 24.10.5)'
-        required: true
-        default: 'snapshot'
+      custom_packages:
+        description: 'Extra packages (space or comma separated)'
+        required: false
+        default: 'nano htop kmod-wireguard'
 
 jobs:
   build:
@@ -15,42 +15,58 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Run Build Script
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk g++ git gettext libssl-dev python3-setuptools rsync swig unzip file wget
+          python3 - <<EOF
+          import json, urllib.request, time, os
 
-      - name: Download Image Builder
-        run: |
-          VERSION="${{ github.event.inputs.version }}"
-          TARGET="ipq40xx"
-          SUBTARGET="chromium"
+          version = "snapshot"
+          profile = "google,gale"
+          extra_pkgs = "${{ github.event.inputs.custom_packages }}".replace(",", " ").split()
+          packages = ["base-files", "uci", "netifd", "dropbear", "dnsmasq", "iptables", "fstools", "luci", "luci-theme-bootstrap"] + extra_pkgs
+
+          print(f"Requesting build for {profile} with packages: {packages}")
           
-          if [ "$VERSION" = "snapshot" ]; then
-            URL="https://downloads.immortalwrt.org/releases/25.12.1/targets/ipq40xx/chromium/immortalwrt-25.12.1-ipq40xx-chromium-google_wifi-squashfs-sysupgrade.bin"
-          else
-            URL="httpps://https://downloads.immortalwrt.org/releases/25.12.1/targets/ipq40xx/chromium/immortalwrt-25.12.1-ipq40xx-chromium-google_wifi-squashfs-sysupgrade.bin"
-          fi
+          payload = json.dumps({
+              "version": version,
+              "target": "ipq40xx",
+              "profile": profile,
+              "packages": packages
+          }).encode("utf-8")
 
-          echo "[*] Downloading Builder from: $URL"
-          wget -q "$URL" -O builder.tar.xz || { echo "[-] Download failed! Check version string."; exit 1; }
-
-          mkdir builder
-          tar -xf builder.tar.xz -C builder --strip-components=1
-
-      - name: Build Firmware with All Custom Packages
-        run: |
-          cd builder
+          req = urllib.request.Request("https://firmware-selector.immortalwrt.org/api/build", data=payload, headers={"Content-Type": "application/json"})
           
-          ALL_PACKAGES="apk-openssl ath10k-board-qca4019 ath10k-firmware-qca4019-ct autocore automount base-files block-mount ca-bundle default-settings-chn dnsmasq-full dropbear firewall4 fstools kmod-ath10k-ct kmod-gpio-button-hotplug kmod-leds-gpio kmod-nf-nathelper kmod-nft-offload kmod-usb-dwc3 kmod-usb-dwc3-qcom kmod-usb3 libc libgcc libustream-openssl logd luci luci-app-cpufreq mtd netifd nftables odhcp6c odhcpd-ipv6only ppp ppp-mod-pppoe procd-ujail uboot-envtools uci uclient-fetch urandom-seed urngd wpad-openssl partx-utils mkf2fs e2fsprogs kmod-fs-ext4 kmod-fs-f2fs kmod-google-firmware kmod-ramoops sing-box ip-full kmod-tun luci-app-homeproxy nano btop iperf3"
+          with urllib.request.urlopen(req) as resp:
+              res = json.loads(resp.read().decode())
+              
+          req_hash = res["request_hash"]
+          print(f"Request hash: {req_hash}. Polling for completion...")
 
-          echo "[*] Compiling router firmware for google_gale..."
-          make image PROFILE="google_gale" PACKAGES="$ALL_PACKAGES"
-          
-          mkdir -p ../firmware_output
-          cp bin/targets/ipq40xx/chromium/* ../firmware_output/ || cp -r bin/targets/*/*/* ../firmware_output/ || true
+          while True:
+              time.sleep(15)
+              with urllib.request.urlopen(f"https://firmware-selector.immortalwrt.org/api/build/{req_hash}") as resp:
+                  status_res = json.loads(resp.read().decode())
+                  status = status_res.get("status")
+                  print(f"Status: {status}")
+                  if status == "complete":
+                      os.makedirs("firmware_output", exist_ok=True)
+                      for img in status_res.get("images", []):
+                          img_url = "https://firmware-selector.immortalwrt.org" + img["url"]
+                          dest = os.path.join("firmware_output", img["name"])
+                          print(f"Downloading {img['name']}...")
+                          urllib.request.urlretrieve(img_url, dest)
+                      break
+                  elif status == "failed":
+                      print("Build failed!")
+                      exit(1)
+          EOF
 
-      - name: Upload Artifacts
+      - name: Upload Firmware Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: immortalwrt-google-wifi-gale
