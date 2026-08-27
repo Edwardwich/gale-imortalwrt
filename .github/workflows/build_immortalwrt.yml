@@ -1,4 +1,4 @@
-name: Build ImmortalWrt Google Wifi (Gale)
+name: Build ImmortalWrt Google Wifi (Gale) - Custom Packages
 
 on:
   workflow_dispatch:
@@ -15,12 +15,12 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Build Dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk g++ git gettext libssl-dev python3-setuptools rsync swig unzip file wget
 
-      - name: Download and Extract Image Builder
+      - name: Download Image Builder
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TARGET="ipq40xx"
@@ -32,29 +32,26 @@ jobs:
             URL="https://downloads.immortalwrt.org/releases/$VERSION/targets/$TARGET/$SUBTARGET/immortalwrt-image-builder-$VERSION-$TARGET-$SUBTARGET.Linux-x86_64.tar.xz"
           fi
 
-          echo "[*] Downloading Image Builder from: $URL"
+          echo "[*] Downloading from: $URL"
           wget -q "$URL" -O builder.tar.xz
-          
           mkdir builder
           tar -xf builder.tar.xz -C builder --strip-components=1
-          cd builder
-          make clean
 
-      - name: Compile Custom Firmware
+      - name: Build Firmware with All Custom Packages
         run: |
           cd builder
           
-          PROFILE="google_gale"
-          PACKAGES="iperf3 sing-box ip-full kmod-tun luci-app-homeproxy"
-          
-          echo "[*] Building firmware for profile: $PROFILE"
-          make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" EXTRA_IMAGE_NAME="custom-gale"
+          # All your packages combined into a single string
+          ALL_PACKAGES="apk-openssl ath10k-board-qca4019 ath10k-firmware-qca4019-ct autocore automount base-files block-mount ca-bundle default-settings-chn dnsmasq-full dropbear firewall4 fstools kmod-ath10k-ct kmod-gpio-button-hotplug kmod-leds-gpio kmod-nf-nathelper kmod-nft-offload kmod-usb-dwc3 kmod-usb-dwc3-qcom kmod-usb3 libc libgcc libustream-openssl logd luci luci-app-cpufreq mtd netifd nftables odhcp6c odhcpd-ipv6only ppp ppp-mod-pppoe procd-ujail uboot-envtools uci uclient-fetch urandom-seed urngd wpad-openssl partx-utils mkf2fs e2fsprogs kmod-fs-ext4 kmod-fs-f2fs kmod-google-firmware kmod-ramoops sing-box ip-full kmod-tun luci-app-homeproxy nano btop iperf3"
+
+          echo "[*] Compiling image for google_gale with custom package set..."
+          make image PROFILE="google_gale" PACKAGES="$ALL_PACKAGES"
           
           mkdir -p ../firmware_output
           cp bin/targets/ipq40xx/generic/* ../firmware_output/ || cp -r bin/targets/*/*/* ../firmware_output/ || true
 
-      - name: Upload Firmware Artifacts
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: immortalwrt-google-wifi-gale
+          name: immortalwrt-google-wifi-gale-custom
           path: firmware_output/
