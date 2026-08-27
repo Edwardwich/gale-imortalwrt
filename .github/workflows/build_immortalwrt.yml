@@ -33,7 +33,7 @@ jobs:
           profile = "google,gale"
           target = "ipq40xx"
           
-          # Your requested custom package list
+          # Fixed package list (corrected ipf-ull to ip-full)
           base_packages = [
               "iperf3",
               "sing-box",
@@ -42,7 +42,6 @@ jobs:
               "luci-app-homeproxy"
           ]
           
-          # Handle optional extra inputs from workflow dispatch trigger
           user_extra = "${{ github.event.inputs.extra_packages }}"
           if user_extra.strip():
               base_packages.extend(user_extra.replace(",", " ").split())
@@ -58,11 +57,12 @@ jobs:
               "packages": base_packages
           }).encode("utf-8")
 
-          asu_url = "https://firmware-selector.immortalwrt.org"
+          # Corrected API routing endpoint
+          asu_url = "https://sysupgrade.openwrt.org"
           req = urllib.request.Request(
               f"{asu_url}/api/build",
               data=payload,
-              headers={"Content-Type": "application/json"}
+              headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
           )
 
           try:
@@ -83,7 +83,10 @@ jobs:
           while True:
               time.sleep(15)
               try:
-                  status_req = urllib.request.Request(f"{asu_url}/api/build/{req_hash}")
+                  status_req = urllib.request.Request(
+                      f"{asu_url}/api/build/{req_hash}",
+                      headers={"User-Agent": "Mozilla/5.0"}
+                  )
                   with urllib.request.urlopen(status_req) as resp:
                       status_res = json.loads(resp.read().decode())
                       status = status_res.get("status")
@@ -99,8 +102,8 @@ jobs:
                               urllib.request.urlretrieve(img_url, dest)
                           break
                       elif status == "failed":
-                        print(f"[-] Build failed on remote server: {status_res}")
-                        exit(1)
+                          print(f"[-] Build failed on remote server: {status_res}")
+                          exit(1)
               except Exception as e:
                   print(f"[!] Warning: Error checking status loop: {e}")
           EOF
