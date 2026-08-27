@@ -4,13 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'ImmortalWrt Version (snapshot or release like 23.05.5)'
+        description: 'ImmortalWrt Version (e.g., snapshot or 24.10.2)'
         required: true
         default: 'snapshot'
-      extra_packages:
-        description: 'Additional packages to append (optional)'
-        required: false
-        default: ''
 
 jobs:
   build:
@@ -19,97 +15,42 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Request and Build Firmware via ASU API
+      - name: Free Up Disk Space
         run: |
-          python3 - <<EOF
-          import json, urllib.request, time, os
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/lib/android
+          df -h
 
-          version = "${{ github.event.inputs.version }}"
-          profile = "google,gale"
-          target = "ipq40xx"
+      - name: Run ImmortalWrt Image Builder via Docker
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          TARGET="ipq40xx"
+          SUBTARGET="generic"
+          PROFILE="google_gale"  # Image builder profile format usually replaces commas/hyphens with underscores
           
-          # Fixed package list (corrected ipf-ull to ip-full)
-          base_packages = [
-              "iperf3",
-              "sing-box",
-              "ip-full",
-              "kmod-tun",
-              "luci-app-homeproxy"
-          ]
+          # Packages to add
+          PACKAGES="iperf3 sing-box ip-full kmod-tun luci-app-homeproxy"
           
-          user_extra = "${{ github.event.inputs.extra_packages }}"
-          if user_extra.strip():
-              base_packages.extend(user_extra.replace(",", " ").split())
+          echo "[*] Pulling ImmortalWrt Image Builder container..."
+          docker pull immortalwrt/imagebuilder:${VERSION}-${TARGET}-${SUBTARGET} || docker pull immortalwrt/imagebuilder:snapshot-${TARGET}-${SUBTARGET}
 
-          print(f"[*] Target Profile: {profile} ({target})")
-          print(f"[*] Version: {version}")
-          print(f"[*] Packages to include: {base_packages}")
+          echo "[*] Starting firmware compilation..."
+          mkdir -p output
 
-          payload = json.dumps({
-              "version": version,
-              "target": target,
-              "profile": profile,
-              "packages": base_packages
-          }).encode("utf-8")
+          # Run the image builder container
+          docker run --rm \
+            -v "$(pwd)/output:/builder/bin" \
+            immortalwrt/imagebuilder:snapshot-${TARGET}-${SUBTARGET} \
+            make image PROFILE="${PROFILE}" PACKAGES="${PACKAGES}" EXTRA_IMAGE_NAME="custom-gale"
+            
+          echo "[+] Build process completed."
 
-          # Corrected API routing endpoint
-          asu_url = "https://sysupgrade.openwrt.org"
-          req = urllib.request.Request(
-              f"{asu_url}/api/build",
-              data=payload,
-              headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
-          )
-
-          try:
-              with urllib.request.urlopen(req) as resp:
-                  res = json.loads(resp.read().decode())
-          except Exception as e:
-              print(f"[-] Failed to submit build request: {e}")
-              exit(1)
-
-          req_hash = res.get("request_hash")
-          if not req_hash:
-              print(f"[-] Error in API response: {res}")
-              exit(1)
-
-          print(f"[+] Build request accepted. Request Hash: {req_hash}")
-          print("[*] Polling build status (this may take a few minutes)...")
-
-          while True:
-              time.sleep(15)
-              try:
-                  status_req = urllib.request.Request(
-                      f"{asu_url}/api/build/{req_hash}",
-                      headers={"User-Agent": "Mozilla/5.0"}
-                  )
-                  with urllib.request.urlopen(status_req) as resp:
-                      status_res = json.loads(resp.read().decode())
-                      status = status_res.get("status")
-                      print(f"[*] Status: {status}")
-
-                      if status == "complete":
-                          print("[+] Build completed successfully!")
-                          os.makedirs("firmware_output", exist_ok=True)
-                          for img in status_res.get("images", []):
-                              img_url = asu_url + img["url"] if img["url"].startswith("/") else img["url"]
-                              dest = os.path.join("firmware_output", img["name"])
-                              print(f"[*] Downloading {img['name']}...")
-                              urllib.request.urlretrieve(img_url, dest)
-                          break
-                      elif status == "failed":
-                          print(f"[-] Build failed on remote server: {status_res}")
-                          exit(1)
-              except Exception as e:
-                  print(f"[!] Warning: Error checking status loop: {e}")
-          EOF
+      - name: Verify Output Files
+        run: ls -la output/targets/*/*/* || ls -la output/
 
       - name: Upload Firmware Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: immortalwrt-google-wifi-gale
-          path: firmware_output/
+          path: output/targets/**/*
